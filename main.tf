@@ -12,12 +12,13 @@ terraform {
 }
 
 provider "aws" {
-  region  = "eu-north-1"
+  region  = var.region
   profile = "default"
 }
 
+
 resource "aws_dynamodb_table" "table" {
-  name         = "free-tier-demo-table"
+  name         = "${var.project}-${var.env}-table"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
@@ -28,14 +29,14 @@ resource "aws_dynamodb_table" "table" {
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name = "free-tier-lambda-role"
+  name = "${var.project}-${var.env}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -52,8 +53,8 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Resource = aws_dynamodb_table.table.arn
       },
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
@@ -73,7 +74,7 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_lambda_function" "lambda" {
-  function_name = "free-tier-demo-lambda"
+  function_name = "${var.project}-${var.env}-lambda"
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.11"
@@ -90,7 +91,7 @@ resource "aws_lambda_function" "lambda" {
 
 
 resource "aws_api_gateway_rest_api" "api" {
-  name = "free-tier-demo-api"
+  name = "${var.project}-${var.env}-api"
 }
 
 resource "aws_api_gateway_method" "proxy" {
@@ -110,9 +111,9 @@ resource "aws_api_gateway_integration" "proxy" {
 }
 
 resource "aws_api_gateway_deployment" "deploy" {
-  depends_on = [aws_api_gateway_integration.proxy]
+  depends_on  = [aws_api_gateway_integration.proxy]
   rest_api_id = aws_api_gateway_rest_api.api.id
-  stage_name  = "dev"
+  stage_name  = var.env
 }
 
 resource "aws_lambda_permission" "apigw" {
