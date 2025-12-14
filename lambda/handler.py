@@ -29,12 +29,12 @@ def _normalize_path(event) -> str:
     return path
 
 
-def handler(event, context):
-    """API Gateway (REST v1) Lambda proxy handler.
 
-    Routes:
-    - /       -> health check
-    - /items  -> write + read from DynamoDB
+def root_handler(event, context):
+    """API Gateway (REST v1) Lambda proxy handler for the root route.
+
+    Route:
+    - / -> health check
     """
 
     # Preflight / CORS
@@ -43,14 +43,31 @@ def handler(event, context):
 
     path = _normalize_path(event)
 
-    # Health route
     if path == "/":
         return _resp(200, {
             "message": "OK",
             "path": path,
         })
 
-    # Items route
+    return _resp(404, {
+        "message": "Not Found",
+        "path": path,
+    })
+
+
+def items_handler(event, context):
+    """API Gateway (REST v1) Lambda proxy handler for the items route.
+
+    Route:
+    - /items -> write + read from DynamoDB
+    """
+
+    # Preflight / CORS
+    if (event.get("httpMethod") or "").upper() == "OPTIONS":
+        return _resp(200, {"ok": True})
+
+    path = _normalize_path(event)
+
     if path == "/items":
         table_name = os.environ.get("TABLE_NAME")
         if not table_name:
@@ -74,7 +91,6 @@ def handler(event, context):
             "items": items,
         })
 
-    # Unknown route
     return _resp(404, {
         "message": "Not Found",
         "path": path,
