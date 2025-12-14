@@ -41,17 +41,10 @@ def root_handler(event, context):
     if (event.get("httpMethod") or "").upper() == "OPTIONS":
         return _resp(200, {"ok": True})
 
-    path = _normalize_path(event)
-
-    if path == "/":
-        return _resp(200, {
-            "message": "OK",
-            "path": path,
-        })
-
-    return _resp(404, {
-        "message": "Not Found",
-        "path": path,
+    return _resp(200, {
+        "message": "OK",
+        "path": _normalize_path(event),
+        "function": "root",
     })
 
 
@@ -66,32 +59,23 @@ def items_handler(event, context):
     if (event.get("httpMethod") or "").upper() == "OPTIONS":
         return _resp(200, {"ok": True})
 
-    path = _normalize_path(event)
-
-    if path == "/items":
-        table_name = os.environ.get("TABLE_NAME")
-        if not table_name:
-            return _resp(500, {
-                "error": "TABLE_NAME env var is not set",
-                "hint": "Set TABLE_NAME in the Lambda environment variables via Terraform",
-            })
-
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(table_name)
-
-        # write a new item per call
-        table.put_item(Item={
-            "id": context.aws_request_id,
+    table_name = os.environ.get("TABLE_NAME")
+    if not table_name:
+        return _resp(500, {
+            "error": "TABLE_NAME env var is not set",
+            "hint": "Set TABLE_NAME in the Lambda environment variables via Terraform",
         })
 
-        items = table.scan().get("Items", [])
-        return _resp(200, {
-            "message": "items",
-            "count": len(items),
-            "items": items,
-        })
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
 
-    return _resp(404, {
-        "message": "Not Found",
-        "path": path,
+    table.put_item(Item={
+        "id": context.aws_request_id,
+    })
+
+    items = table.scan().get("Items", [])
+    return _resp(200, {
+        "message": "items",
+        "count": len(items),
+        "items": items,
     })

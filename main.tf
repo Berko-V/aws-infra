@@ -16,7 +16,6 @@ provider "aws" {
   profile = "default"
 }
 
-
 resource "aws_dynamodb_table" "table" {
   name         = "${var.project}-${var.env}-table"
   billing_mode = "PAY_PER_REQUEST"
@@ -65,8 +64,6 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
-
-
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.module}/lambda"
@@ -90,6 +87,23 @@ resource "aws_lambda_function" "lambda" {
   }
 }
 
+# Second Lambda: handles /items
+resource "aws_lambda_function" "items" {
+  function_name = "${var.project}-${var.env}-items"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "handler.items_handler"
+  runtime       = "python3.11"
+
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+  environment {
+    variables = {
+      TABLE_NAME = aws_dynamodb_table.table.name
+      STAGE      = var.env
+    }
+  }
+}
 
 resource "aws_api_gateway_rest_api" "api" {
   name = "${var.project}-${var.env}-api"
@@ -131,7 +145,7 @@ resource "aws_api_gateway_integration" "items" {
   http_method             = aws_api_gateway_method.items.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.lambda.invoke_arn
+  uri                     = aws_lambda_function.items.invoke_arn
 }
 
 resource "aws_api_gateway_deployment" "deploy" {
@@ -143,11 +157,11 @@ resource "aws_api_gateway_deployment" "deploy" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   stage_name  = var.env
 
-  # Force a new deployment when the API wiring changes
+  # Force a new deployment when the integration URIs change
   triggers = {
     redeploy = sha1(jsonencode({
-      root_integration  = aws_api_gateway_integration.proxy.id
-      items_integration = aws_api_gateway_integration.items.id
+      root_uri  = aws_api_gateway_integration.proxy.uri
+      items_uri = aws_api_gateway_integration.items.uri
     }))
   }
 
@@ -163,4 +177,11 @@ resource "aws_lambda_permission" "apigw" {
 
   # Allow API Gateway to invoke Lambda on ANY method and ANY path
   source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
+}
+
+resource "aws_lambda_permission" "apigw_items" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.items.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
 }
