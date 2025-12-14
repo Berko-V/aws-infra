@@ -1,72 +1,81 @@
 import json
-import boto3
 import os
+import boto3
 
-# Environment variables
-table_name = os.environ["TABLE_NAME"]
-stage = os.environ.get("STAGE", "dev")
 
-# AWS clients
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(table_name)
+def _resp(status_code: int, body: dict | str, *, cors: bool = True):
+    headers = {
+        "Content-Type": "application/json",
+    }
+
+    if cors:
+        headers.update({
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        })
+
+    return {
+        "statusCode": status_code,
+        "headers": headers,
+        "body": json.dumps(body) if isinstance(body, (dict, list)) else json.dumps({"message": body}),
+    }
+
+
+def _normalize_path(event) -> str:
+    path = event.get("path") or "/"
+    if path != "/" and path.endswith("/"):
+        path = path[:-1]
+    return path
 
 
 def handler(event, context):
-    """
-    Handles API Gateway proxy requests.
+    """API Gateway (REST v1) Lambda proxy handler.
 
     Routes:
-    - /            -> health / hello response (no DB access)
-    - /items       -> write + read from DynamoDB
+    - /       -> health check
+    - /items  -> write + read from DynamoDB
     """
 
-    path = event.get("path", "/") or "/"
+    # Preflight / CORS
+    if (event.get("httpMethod") or "").upper() == "OPTIONS":
+        return _resp(200, {"ok": True})
 
-    # Normalize path: remove trailing slash except for root
-    if path != "/" and path.endswith("/"):
-        path = path[:-1]
+    path = _normalize_path(event)
 
-    # Base / health route
+    # Health route
     if path == "/":
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({
-                "message": "OK",
-                "path": path
-            })
-        }
+        return _resp(200, {
+            "message": "OK",
+            "path": path,
+        })
 
-    # /items route
+    # Items route
     if path == "/items":
+        table_name = os.environ.get("TABLE_NAME")
+        if not table_name:
+            return _resp(500, {
+                "error": "TABLE_NAME env var is not set",
+                "hint": "Set TABLE_NAME in the Lambda environment variables via Terraform",
+            })
+
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(table_name)
+
+        # write a new item per call
         table.put_item(Item={
-            "id": context.aws_request_id
+            "id": context.aws_request_id,
         })
 
         items = table.scan().get("Items", [])
-
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({
-                "message": "items",
-                "count": len(items),
-                "items": items
-            })
-        }
+        return _resp(200, {
+            "message": "items",
+            "count": len(items),
+            "items": items,
+        })
 
     # Unknown route
-    return {
-        "statusCode": 404,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps({
-            "message": "Not Found",
-            "path": path
-        })
-    }
+    return _resp(404, {
+        "message": "Not Found",
+        "path": path,
+    })
