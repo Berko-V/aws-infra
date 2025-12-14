@@ -20,12 +20,19 @@ def handler(event, context):
     - /items       -> write + read from DynamoDB
     """
 
-    path = event.get("path", "/")
+    path = event.get("path", "/") or "/"
+
+    # Normalize path: remove trailing slash except for root
+    if path != "/" and path.endswith("/"):
+        path = path[:-1]
 
     # Base / health route
-    if path == f"/{stage}" or path == "/" or path.endswith("/"):
+    if path == "/":
         return {
             "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
             "body": json.dumps({
                 "message": "OK",
                 "path": path
@@ -33,7 +40,7 @@ def handler(event, context):
         }
 
     # /items route
-    if path.endswith("/items"):
+    if path == "/items":
         table.put_item(Item={
             "id": context.aws_request_id
         })
@@ -42,6 +49,9 @@ def handler(event, context):
 
         return {
             "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
             "body": json.dumps({
                 "message": "items",
                 "count": len(items),
@@ -52,6 +62,9 @@ def handler(event, context):
     # Unknown route
     return {
         "statusCode": 404,
+        "headers": {
+            "Content-Type": "application/json"
+        },
         "body": json.dumps({
             "message": "Not Found",
             "path": path

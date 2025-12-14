@@ -85,6 +85,7 @@ resource "aws_lambda_function" "lambda" {
   environment {
     variables = {
       TABLE_NAME = aws_dynamodb_table.table.name
+      STAGE      = var.env
     }
   }
 }
