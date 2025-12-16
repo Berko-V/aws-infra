@@ -155,7 +155,6 @@ resource "aws_api_gateway_deployment" "deploy" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
-  stage_name  = var.env
 
   # Force a new deployment when the integration URIs change
   triggers = {
@@ -168,6 +167,12 @@ resource "aws_api_gateway_deployment" "deploy" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+resource "aws_api_gateway_stage" "stage" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  deployment_id = aws_api_gateway_deployment.deploy.id
+  stage_name    = var.env
 }
 
 resource "aws_lambda_permission" "apigw" {
