@@ -16,18 +16,7 @@ provider "aws" {
   profile = "default"
 }
 
-
-resource "aws_dynamodb_table" "table" {
-  name         = "${var.project}-${var.env}-table"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "id"
-
-  attribute {
-    name = "id"
-    type = "S"
-  }
-}
-
+# IAM stays in root (shared by both Lambdas)
 resource "aws_iam_role" "lambda_role" {
   name = "${var.project}-${var.env}-lambda-role"
 
@@ -50,7 +39,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem", "dynamodb:Scan"]
-        Resource = aws_dynamodb_table.table.arn
+        Resource = module.db.arn
       },
       {
         Effect = "Allow"
@@ -65,60 +54,47 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
-
-
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda"
-  output_path = "${path.module}/lambda.zip"
+# DynamoDB
+module "db" {
+  source = "./modules/dynamodb"
+  name   = "${var.project}-${var.env}-table"
 }
 
-resource "aws_lambda_function" "lambda" {
+# Root Lambda: /
+module "lambda_root" {
+  source        = "./modules/lambda"
   function_name = "${var.project}-${var.env}-lambda"
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "handler.handler"
-  runtime       = "python3.11"
-
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-
-  environment {
-    variables = {
-      TABLE_NAME = aws_dynamodb_table.table.name
-    }
+  handler       = "handler.root_handler"
+  role_arn      = aws_iam_role.lambda_role.arn
+  source_dir    = "${path.root}/lambda"
+  env_vars = {
+    TABLE_NAME = module.db.name
+    STAGE      = var.env
   }
 }
 
-
-resource "aws_api_gateway_rest_api" "api" {
-  name = "${var.project}-${var.env}-api"
+# Items Lambda: /items
+module "lambda_items" {
+  source        = "./modules/lambda"
+  function_name = "${var.project}-${var.env}-items"
+  handler       = "handler.items_handler"
+  role_arn      = aws_iam_role.lambda_role.arn
+  source_dir    = "${path.root}/lambda"
+  env_vars = {
+    TABLE_NAME = module.db.name
+    STAGE      = var.env
+  }
 }
 
-resource "aws_api_gateway_method" "proxy" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_rest_api.api.root_resource_id
-  http_method   = "ANY"
-  authorization = "NONE"
-}
+# API Gateway
+module "api" {
+  source   = "./modules/apigw"
+  api_name = "${var.project}-${var.env}-api"
+  stage    = var.env
 
-resource "aws_api_gateway_integration" "proxy" {
-  rest_api_id             = aws_api_gateway_rest_api.api.id
-  resource_id             = aws_api_gateway_rest_api.api.root_resource_id
-  http_method             = aws_api_gateway_method.proxy.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.lambda.invoke_arn
-}
+  root_invoke_arn  = module.lambda_root.invoke_arn
+  items_invoke_arn = module.lambda_items.invoke_arn
 
-resource "aws_api_gateway_deployment" "deploy" {
-  depends_on  = [aws_api_gateway_integration.proxy]
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  stage_name  = var.env
-}
-
-resource "aws_lambda_permission" "apigw" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+  root_fn_name  = module.lambda_root.function_name
+  items_fn_name = module.lambda_items.function_name
 }
