@@ -1,8 +1,8 @@
 variable "function_name" { type = string }
-variable "handler"       { type = string }
-variable "role_arn"      { type = string }
-variable "source_dir"    { type = string }
-variable "env_vars"      { type = map(string) }
+variable "handler" { type = string }
+variable "role_arn" { type = string }
+variable "source_dir" { type = string }
+variable "env_vars" { type = map(string) }
 
 data "archive_file" "zip" {
   type        = "zip"

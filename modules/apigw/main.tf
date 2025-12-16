@@ -1,10 +1,10 @@
 variable "api_name" { type = string }
-variable "stage"    { type = string }
+variable "stage" { type = string }
 
-variable "root_invoke_arn"  { type = string }
+variable "root_invoke_arn" { type = string }
 variable "items_invoke_arn" { type = string }
 
-variable "root_fn_name"  { type = string }
+variable "root_fn_name" { type = string }
 variable "items_fn_name" { type = string }
 
 resource "aws_api_gateway_rest_api" "api" {
