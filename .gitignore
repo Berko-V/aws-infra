@@ -1,8 +1,23 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
 
+# Our local state layout
+state/
+backup-state/
 
+# Backend config (contains bucket/key info)
+backend-*.hcl
 
+# Local screenshots / random files
+*.png
 
-
+# Lambda build artifacts (zip files)
+modules/lambda/*.zip
 
 # Terraform
 .terraform/
