@@ -1,0 +1,53 @@
+name: Terraform CI (plan)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [dev, staging]
+
+    defaults:
+      run:
+        working-directory: aws-terraform-demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Write backend config (generated)
+        run: |
+          cat > backend.hcl <<EOF
+          bucket         = "${{ secrets.TF_STATE_BUCKET }}"
+          key            = "aws-terraform-demo/${{ matrix.env }}/terraform.tfstate"
+          region         = "${{ secrets.AWS_REGION }}"
+          dynamodb_table = "terraform-locks"
+          encrypt        = true
+          EOF
+
+      - name: Terraform init
+        run: terraform init -reconfigure -backend-config=backend.hcl
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan (${{ matrix.env }})
+        run: terraform plan -var-file=env/${{ matrix.env }}.tfvars -no-color
