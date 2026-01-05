@@ -1,7 +1,9 @@
 name: Terraform CD (apply staging)
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Terraform CI (plan)"]
+    types: [completed]
     branches: [aws-infra]
 
 permissions:
@@ -14,6 +16,7 @@ concurrency:
 
 jobs:
   apply_staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
 
@@ -27,6 +30,12 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
+
+      - name: Debug secret presence (no values)
+        run: |
+          test -n "${{ secrets.AWS_ROLE_ARN }}" || (echo "AWS_ROLE_ARN is EMPTY" && exit 1)
+          test -n "${{ secrets.AWS_REGION }}" || (echo "AWS_REGION is EMPTY" && exit 1)
+          test -n "${{ secrets.TF_STATE_BUCKET }}" || (echo "TF_STATE_BUCKET is EMPTY" && exit 1)
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
