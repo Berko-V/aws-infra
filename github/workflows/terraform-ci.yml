@@ -16,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: .
+        working-directory: aws-terraform-demo
 
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +25,18 @@ jobs:
         with:
           terraform_version: 1.6.6
 
+      - name: Debug secret presence (no values)
+        run: |
+          test -n "${{ secrets.AWS_ROLE_ARN }}" && echo "AWS_ROLE_ARN is set" || (echo "AWS_ROLE_ARN is EMPTY" && exit 1)
+          test -n "${{ secrets.AWS_REGION }}" && echo "AWS_REGION is set" || (echo "AWS_REGION is EMPTY" && exit 1)
+          test -n "${{ secrets.TF_STATE_BUCKET }}" && echo "TF_STATE_BUCKET is set" || (echo "TF_STATE_BUCKET is EMPTY" && exit 1)
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Write backend config (generated)
+      - name: Write backend config
         run: |
           cat > backend.hcl <<EOF
           bucket         = "${{ secrets.TF_STATE_BUCKET }}"
