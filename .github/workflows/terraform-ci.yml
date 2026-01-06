@@ -30,9 +30,21 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Verify AWS credentials are present (safe)
+        run: |
+          test -n "$AWS_ACCESS_KEY_ID" && echo "AWS_ACCESS_KEY_ID is set" || (echo "AWS_ACCESS_KEY_ID is MISSING" && exit 1)
+          test -n "$AWS_SECRET_ACCESS_KEY" && echo "AWS_SECRET_ACCESS_KEY is set" || (echo "AWS_SECRET_ACCESS_KEY is MISSING" && exit 1)
+          test -n "$AWS_SESSION_TOKEN" && echo "AWS_SESSION_TOKEN is set" || (echo "AWS_SESSION_TOKEN is MISSING" && exit 1)
+
+      - name: Verify AWS auth via STS
+        run: aws sts get-caller-identity
+
       - name: Debug AWS profile env (safe)
         run: |
+          echo "AWS profile/shared-config related env vars:"
           env | egrep '^AWS_(PROFILE|DEFAULT_PROFILE|SDK_LOAD_CONFIG|CONFIG_FILE|SHARED_CREDENTIALS_FILE)=' || true
+          echo "AWS credential env vars present? (names only)"
+          env | egrep '^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)=' | sed 's/=.*$/=***redacted***/'
 
       - name: Write backend config (generated)
         run: |
