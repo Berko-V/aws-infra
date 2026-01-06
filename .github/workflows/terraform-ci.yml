@@ -34,11 +34,6 @@ jobs:
         run: |
           env | egrep '^AWS_(PROFILE|DEFAULT_PROFILE|SDK_LOAD_CONFIG|CONFIG_FILE|SHARED_CREDENTIALS_FILE)=' || true
 
-      - name: Unset AWS profile env for Terraform
-        run: |
-          echo "Unsetting AWS profile-related env vars for Terraform provider"
-          unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SDK_LOAD_CONFIG AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
-
       - name: Write backend config (generated)
         run: |
           cat > backend.hcl <<EOF
@@ -50,9 +45,12 @@ jobs:
           EOF
 
       - name: Terraform init
-        run: |
-          unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SDK_LOAD_CONFIG AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
-          terraform init -reconfigure -backend-config=backend.hcl
+        env:
+          AWS_PROFILE: ""
+          AWS_DEFAULT_PROFILE: ""
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: terraform init -reconfigure -backend-config=backend.hcl
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive
@@ -61,6 +59,9 @@ jobs:
         run: terraform validate
 
       - name: Terraform plan (${{ matrix.env }})
-        run: |
-          unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SDK_LOAD_CONFIG AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
-          terraform plan -var-file=env/${{ matrix.env }}.tfvars -no-color
+        env:
+          AWS_PROFILE: ""
+          AWS_DEFAULT_PROFILE: ""
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: terraform plan -var-file=env/${{ matrix.env }}.tfvars -no-color
