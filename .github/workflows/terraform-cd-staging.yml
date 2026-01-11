@@ -1,7 +1,9 @@
 name: Terraform CD (apply staging)
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Terraform CI (plan)"]
+    types: [completed]
     branches: [aws-infra]
 
 permissions:
@@ -14,24 +16,36 @@ concurrency:
 
 jobs:
   apply_staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
 
     defaults:
       run:
-        working-directory: aws-terraform-demo
+        working-directory: .
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.6
+          terraform_version: 1.14.1
+
+      - name: Debug secret presence (no values)
+        run: |
+          test -n "${{ secrets.AWS_ROLE_ARN }}" || (echo "AWS_ROLE_ARN is EMPTY" && exit 1)
+          test -n "${{ secrets.AWS_REGION }}" || (echo "AWS_REGION is EMPTY" && exit 1)
+          test -n "${{ secrets.TF_STATE_BUCKET }}" || (echo "TF_STATE_BUCKET is EMPTY" && exit 1)
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify AWS auth via STS
+        run: aws sts get-caller-identity
 
       - name: Write backend config (staging)
         run: |
@@ -44,7 +58,21 @@ jobs:
           EOF
 
       - name: Terraform init
-        run: terraform init -reconfigure -backend-config=backend.hcl
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform init -reconfigure -backend-config=backend.hcl
 
       - name: Terraform apply (staging)
-        run: terraform apply -auto-approve -var-file=env/staging.tfvars
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform apply -auto-approve -var-file=env/staging.tfvars

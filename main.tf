@@ -14,8 +14,7 @@ terraform {
 }
 
 provider "aws" {
-  region  = var.region
-  profile = "default"
+  region = var.region
 }
 
 # IAM roles (split per function)

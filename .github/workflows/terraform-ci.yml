@@ -2,6 +2,8 @@ name: Terraform CI (plan)
 
 on:
   pull_request:
+    branches:
+      - aws-infra
 
 permissions:
   contents: read
@@ -11,24 +13,47 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         env: [dev, staging]
 
     defaults:
       run:
-        working-directory: aws-terraform-demo
+        working-directory: .
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.6
+          terraform_version: 1.14.1
+
+      - name: Debug secret presence (no values)
+        run: |
+          test -n "${{ secrets.AWS_ROLE_ARN }}" || (echo "AWS_ROLE_ARN is EMPTY" && exit 1)
+          test -n "${{ secrets.AWS_REGION }}" || (echo "AWS_REGION is EMPTY" && exit 1)
+          test -n "${{ secrets.TF_STATE_BUCKET }}" || (echo "TF_STATE_BUCKET is EMPTY" && exit 1)
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify AWS credentials are present (safe)
+        run: |
+          test -n "$AWS_ACCESS_KEY_ID" && echo "AWS_ACCESS_KEY_ID is set" || (echo "AWS_ACCESS_KEY_ID is MISSING" && exit 1)
+          test -n "$AWS_SECRET_ACCESS_KEY" && echo "AWS_SECRET_ACCESS_KEY is set" || (echo "AWS_SECRET_ACCESS_KEY is MISSING" && exit 1)
+          test -n "$AWS_SESSION_TOKEN" && echo "AWS_SESSION_TOKEN is set" || (echo "AWS_SESSION_TOKEN is MISSING" && exit 1)
+
+      - name: Verify AWS auth via STS
+        run: aws sts get-caller-identity
+
+      - name: Debug AWS profile env (safe)
+        run: |
+          echo "AWS profile/shared-config related env vars:"
+          env | egrep '^AWS_(PROFILE|DEFAULT_PROFILE|SDK_LOAD_CONFIG|CONFIG_FILE|SHARED_CREDENTIALS_FILE)=' || true
+          echo "AWS credential env vars present? (names only)"
+          env | egrep '^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)=' | sed 's/=.*$/=***redacted***/'
 
       - name: Write backend config (generated)
         run: |
@@ -41,13 +66,34 @@ jobs:
           EOF
 
       - name: Terraform init
-        run: terraform init -reconfigure -backend-config=backend.hcl
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform init -reconfigure -backend-config=backend.hcl
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive
 
       - name: Terraform validate
-        run: terraform validate
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform validate
 
       - name: Terraform plan (${{ matrix.env }})
-        run: terraform plan -var-file=env/${{ matrix.env }}.tfvars -no-color
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform plan -var-file=env/${{ matrix.env }}.tfvars -no-color
