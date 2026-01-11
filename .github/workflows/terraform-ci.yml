@@ -16,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: .
+        working-directory: aws-terraform-demo
 
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +70,14 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform validate
-        run: terraform validate
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform validate
 
       - name: Terraform plan (${{ matrix.env }})
         env:
