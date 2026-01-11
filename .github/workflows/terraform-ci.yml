@@ -2,6 +2,8 @@ name: Terraform CI (plan)
 
 on:
   pull_request:
+    branches:
+      - aws-infra
 
 permissions:
   contents: read
@@ -11,12 +13,13 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         env: [dev, staging]
 
     defaults:
       run:
-        working-directory: aws-terraform-demo
+        working-directory: .
 
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +27,12 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.14.1
+
+      - name: Debug secret presence (no values)
+        run: |
+          test -n "${{ secrets.AWS_ROLE_ARN }}" || (echo "AWS_ROLE_ARN is EMPTY" && exit 1)
+          test -n "${{ secrets.AWS_REGION }}" || (echo "AWS_REGION is EMPTY" && exit 1)
+          test -n "${{ secrets.TF_STATE_BUCKET }}" || (echo "TF_STATE_BUCKET is EMPTY" && exit 1)
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
