@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - aws-infra
+  push:
+    branches:
+      - aws-infra
 
 permissions:
   contents: read
