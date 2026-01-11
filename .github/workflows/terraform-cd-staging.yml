@@ -26,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -42,6 +44,9 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Verify AWS auth via STS
+        run: aws sts get-caller-identity
+
       - name: Write backend config (staging)
         run: |
           cat > backend.hcl <<EOF
@@ -53,7 +58,21 @@ jobs:
           EOF
 
       - name: Terraform init
-        run: terraform init -reconfigure -backend-config=backend.hcl
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform init -reconfigure -backend-config=backend.hcl
 
       - name: Terraform apply (staging)
-        run: terraform apply -auto-approve -var-file=env/staging.tfvars
+        env:
+          AWS_SDK_LOAD_CONFIG: "0"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+        run: |
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          terraform apply -auto-approve -var-file=env/staging.tfvars
