@@ -1,3 +1,5 @@
 project = "free-tier-demo"
 env     = "staging"
 region  = "eu-north-1"
+lambda_root_package_type = "Image"
+lambda_root_image_uri    = "185926003900.dkr.ecr.eu-north-1.amazonaws.com/lambda-api-staging@sha256:fa25be280e159a4c0e2053443b1b3a77ce80ad6513cd21d8cf35d0de2209ace8"
