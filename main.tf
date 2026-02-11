@@ -108,6 +108,8 @@ module "db" {
 # Root Lambda: /
 module "lambda_root" {
   source        = "./modules/lambda"
+  package_type  = var.lambda_root_package_type
+  image_uri     = var.lambda_root_image_uri
   function_name = "${var.project}-${var.env}-lambda"
   handler       = "handler.root_handler"
   role_arn      = aws_iam_role.lambda_root_role.arn
