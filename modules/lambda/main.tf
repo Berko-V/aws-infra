@@ -1,6 +1,6 @@
 variable "function_name" { type = string }
-variable "role_arn"       { type = string }
-variable "env_vars"       { type = map(string) }
+variable "role_arn" { type = string }
+variable "env_vars" { type = map(string) }
 
 # ZIP-based settings (used only when package_type == "Zip")
 variable "handler" {
