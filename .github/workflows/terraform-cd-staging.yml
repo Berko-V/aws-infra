@@ -27,7 +27,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Detect app changes
+        id: changes
+        shell: bash
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "Comparing: $SHA^..$SHA"
+
+          if git diff --name-only "$SHA^" "$SHA" | grep -q '^app/'; then
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+            echo "App changes detected."
+          else
+            echo "app_changed=false" >> "$GITHUB_OUTPUT"
+            echo "No app changes."
+          fi
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -46,6 +62,59 @@ jobs:
 
       - name: Verify AWS auth via STS
         run: aws sts get-caller-identity
+
+      - name: Set up Docker Buildx
+        if: steps.changes.outputs.app_changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Amazon ECR
+        if: steps.changes.outputs.app_changed == 'true'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+          aws ecr get-login-password --region "${{ secrets.AWS_REGION }}" \
+            | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
+
+      - name: Build & push Lambda image (staging)
+        if: steps.changes.outputs.app_changed == 'true'
+        env:
+          REPO_NAME: lambda-api-staging
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          IMAGE_TAG="staging-${SHORT_SHA}"
+          ECR_URL="$ACCOUNT_ID.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${REPO_NAME}"
+
+          echo "ECR_URL=$ECR_URL" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            -t "$ECR_URL:$IMAGE_TAG" \
+            --push \
+            app
+
+      - name: Resolve pushed image digest
+        if: steps.changes.outputs.app_changed == 'true'
+        env:
+          REPO_NAME: lambda-api-staging
+        run: |
+          DIGEST=$(aws ecr batch-get-image \
+            --region "${{ secrets.AWS_REGION }}" \
+            --repository-name "$REPO_NAME" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'images[0].imageId.imageDigest' \
+            --output text)
+
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then
+            echo "Failed to resolve image digest for tag: $IMAGE_TAG" >&2
+            exit 1
+          fi
+
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "LAMBDA_IMAGE_URI=$ECR_URL@$DIGEST" >> $GITHUB_ENV
+          echo "Resolved image: $ECR_URL@$DIGEST"
 
       - name: Write backend config (staging)
         run: |
@@ -75,4 +144,16 @@ jobs:
           AWS_SHARED_CREDENTIALS_FILE: /dev/null
         run: |
           unset AWS_PROFILE AWS_DEFAULT_PROFILE
-          terraform apply -auto-approve -var-file=env/staging.tfvars
+
+          if [ "${{ steps.changes.outputs.app_changed }}" = "true" ]; then
+            echo "Applying with new image: $LAMBDA_IMAGE_URI"
+            terraform apply -auto-approve \
+              -var-file=env/staging.tfvars \
+              -var="lambda_root_package_type=Image" \
+              -var="lambda_root_image_uri=${LAMBDA_IMAGE_URI}"
+          else
+            echo "No app change detected. Applying infra only (keeping current Lambda image)."
+            terraform apply -auto-approve \
+              -var-file=env/staging.tfvars \
+              -var="lambda_root_package_type=Image"
+          fi
