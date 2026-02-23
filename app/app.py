@@ -7,7 +7,7 @@ def handler(event, context):
 
     body = {
         "ok": True,
-        "message": "Hello from Lambda container 👋",
+        "message": "Hello from STAGING v2 🚀",
         "method": method,
         "path": path,
     }
