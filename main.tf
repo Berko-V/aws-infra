@@ -145,3 +145,6 @@ module "api" {
   root_fn_name  = module.lambda_root.function_name
   items_fn_name = module.lambda_items.function_name
 }
+
+
+## Testing ##
