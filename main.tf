@@ -147,4 +147,30 @@ module "api" {
 }
 
 
-## Testing ##
+resource "aws_s3_bucket" "installer" {
+  bucket = "free-tier-demo-staging-installer"
+}
+
+resource "aws_s3_bucket_public_access_block" "installer" {
+  bucket = aws_s3_bucket.installer.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "installer_public_read" {
+  bucket = aws_s3_bucket.installer.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject"]
+        Resource  = "${aws_s3_bucket.installer.arn}/*"
+      }
+    ]
+  })
+}
